@@ -4,8 +4,12 @@ import json
 import logging
 
 import requests
+import urllib3
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
+
+# 云托管环境 SSL 代理兼容
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 load_dotenv()
 
@@ -40,7 +44,7 @@ def get_access_token() -> str:
         "appid": WX_APPID,
         "secret": WX_APPSECRET,
     }
-    resp = requests.get(url, params=params, timeout=10)
+    resp = requests.get(url, params=params, timeout=10, verify=False)
     data = resp.json()
 
     if "errcode" in data and data["errcode"] != 0:
@@ -55,7 +59,7 @@ def get_access_token() -> str:
 def upload_image(token: str, image_url: str) -> str:
     """下载图片并作为永久素材上传到微信，返回 thumb_media_id。"""
     logger.info("下载封面图片: %s", image_url)
-    img_resp = requests.get(image_url, timeout=15)
+    img_resp = requests.get(image_url, timeout=15, verify=False)
     if img_resp.status_code != 200:
         raise RuntimeError(f"下载封面图片失败 HTTP {img_resp.status_code}")
 
@@ -74,7 +78,7 @@ def upload_image(token: str, image_url: str) -> str:
         f"?access_token={token}&type=image"
     )
     files = {"media": (f"cover{ext}", img_resp.content, content_type)}
-    resp = requests.post(upload_url, files=files, timeout=30)
+    resp = requests.post(upload_url, files=files, timeout=30, verify=False)
     data = resp.json()
 
     if "errcode" in data and data["errcode"] != 0:
@@ -109,6 +113,7 @@ def create_draft(token: str, payload: dict) -> dict:
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json; charset=utf-8"},
         timeout=15,
+        verify=False,
     )
     data = resp.json()
     return data
