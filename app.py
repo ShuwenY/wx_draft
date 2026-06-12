@@ -13,9 +13,12 @@ app = Flask(__name__)
 app.json.ensure_ascii = False  # 确保 JSON 响应中中文不被转义
 
 # ---------- 配置 ----------
-WX_APPID = os.environ["WX_APPID"]
-WX_APPSECRET = os.environ["WX_APPSECRET"]
+WX_APPID = os.environ.get("WX_APPID", "")
+WX_APPSECRET = os.environ.get("WX_APPSECRET", "")
 PORT = int(os.environ.get("PORT", 5000))
+
+if not WX_APPID or not WX_APPSECRET:
+    raise RuntimeError("缺少环境变量 WX_APPID 或 WX_APPSECRET，请检查 .env 文件或云托管环境变量配置")
 
 # ---------- access_token 内存缓存 ----------
 _token_cache = {"token": None, "expires_at": 0}
@@ -160,9 +163,9 @@ def wechat_draft():
     except RuntimeError as e:
         logger.error("业务异常: %s", e)
         return jsonify({"errcode": -1, "errmsg": str(e)}), 500
-    except Exception:
+    except Exception as e:
         logger.exception("未预期的异常")
-        return jsonify({"errcode": -1, "errmsg": "服务器内部错误"}), 500
+        return jsonify({"errcode": -1, "errmsg": f"服务器内部错误: {e}"}), 500
 
 
 @app.route("/health", methods=["GET"])
