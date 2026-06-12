@@ -175,7 +175,11 @@ def wechat_draft():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({
+        "status": "ok",
+        "mode": "cloud_call" if USE_WX_CLOUD_CALL else "token",
+        "api_base": WX_API_BASE,
+    })
 
 
 if __name__ == "__main__":
