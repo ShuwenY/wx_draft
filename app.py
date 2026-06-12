@@ -21,6 +21,11 @@ WX_APPID = os.environ.get("WX_APPID", "")
 WX_APPSECRET = os.environ.get("WX_APPSECRET", "")
 PORT = int(os.environ.get("PORT", 5000))
 
+# 微信云托管「开放接口服务 / 云调用」模式开关
+# 开启后容器内通过 http://api.weixin.qq.com 调用，无需自行携带 access_token
+USE_WX_CLOUD_CALL = os.environ.get("USE_WX_CLOUD_CALL", "0") == "1"
+WX_API_BASE = "http://api.weixin.qq.com" if USE_WX_CLOUD_CALL else "https://api.weixin.qq.com"
+
 if not WX_APPID or not WX_APPSECRET:
     raise RuntimeError("缺少环境变量 WX_APPID 或 WX_APPSECRET，请检查 .env 文件或云托管环境变量配置")
 
@@ -31,14 +36,22 @@ _token_cache = {"token": None, "expires_at": 0}
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
+if USE_WX_CLOUD_CALL:
+    logger.info("微信云托管「开放接口服务 / 云调用」模式已启用，API 基址: %s", WX_API_BASE)
+
 
 def get_access_token() -> str:
-    """获取微信 access_token（内存缓存，有效期 < 7200s）。"""
+    """获取微信 access_token（内存缓存，有效期 < 7200s）。
+    云调用模式下不请求 token，返回空字符串（token 由云托管网关自动注入）。
+    """
+    if USE_WX_CLOUD_CALL:
+        return ""
+
     now = time.time()
     if _token_cache["token"] and now < _token_cache["expires_at"] - 300:
         return _token_cache["token"]
 
-    url = "https://api.weixin.qq.com/cgi-bin/token"
+    url = f"{WX_API_BASE}/cgi-bin/token"
     params = {
         "grant_type": "client_credential",
         "appid": WX_APPID,
@@ -57,14 +70,15 @@ def get_access_token() -> str:
 
 
 def upload_image(token: str, image_url: str) -> str:
-    """下载图片并作为永久素材上传到微信，返回 thumb_media_id。"""
+    """下载图片并作为永久素材上传到微信，返回 thumb_media_id。
+    云调用模式下 token 参数为空，URL 不带 access_token。
+    """
     logger.info("下载封面图片: %s", image_url)
     img_resp = requests.get(image_url, timeout=15, verify=False)
     if img_resp.status_code != 200:
         raise RuntimeError(f"下载封面图片失败 HTTP {img_resp.status_code}")
 
     content_type = img_resp.headers.get("Content-Type", "image/jpeg")
-    # 确定文件扩展名
     ext_map = {
         "image/jpeg": ".jpg",
         "image/png": ".png",
@@ -73,10 +87,11 @@ def upload_image(token: str, image_url: str) -> str:
     }
     ext = ext_map.get(content_type, ".jpg")
 
-    upload_url = (
-        f"https://api.weixin.qq.com/cgi-bin/material/add_material"
-        f"?access_token={token}&type=image"
-    )
+    if USE_WX_CLOUD_CALL:
+        upload_url = f"{WX_API_BASE}/cgi-bin/material/add_material?type=image"
+    else:
+        upload_url = f"{WX_API_BASE}/cgi-bin/material/add_material?access_token={token}&type=image"
+
     files = {"media": (f"cover{ext}", img_resp.content, content_type)}
     resp = requests.post(upload_url, files=files, timeout=30, verify=False)
     data = resp.json()
@@ -91,8 +106,13 @@ def upload_image(token: str, image_url: str) -> str:
 
 
 def create_draft(token: str, payload: dict) -> dict:
-    """调用微信 draft/add 接口创建草稿。"""
-    url = f"https://api.weixin.qq.com/cgi-bin/draft/add?access_token={token}"
+    """调用微信 draft/add 接口创建草稿。
+    云调用模式下 token 参数为空，URL 不带 access_token。
+    """
+    if USE_WX_CLOUD_CALL:
+        url = f"{WX_API_BASE}/cgi-bin/draft/add"
+    else:
+        url = f"{WX_API_BASE}/cgi-bin/draft/add?access_token={token}"
 
     articles = [{
         "title": payload["title"],
