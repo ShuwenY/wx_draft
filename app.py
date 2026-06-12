@@ -101,6 +101,10 @@ def upload_image(token: str, image_url: str) -> str:
             f"上传图片素材失败: errcode={data['errcode']} errmsg={data.get('errmsg', '')}"
         )
 
+    if "media_id" not in data:
+        logger.error("上传图片素材响应异常: %s", json.dumps(data, ensure_ascii=False))
+        raise RuntimeError(f"上传图片素材失败: 响应中缺少 media_id, 完整响应: {json.dumps(data, ensure_ascii=False)}")
+
     logger.info("图片素材上传成功, media_id=%s", data["media_id"])
     return data["media_id"]
 
